@@ -9,7 +9,7 @@ class RRQR:
 
     Produces A*Pi = Q*R where:
     - R11 (leading black) is well-conditioned.
-    - R22 (training block) is small (low residual energy)
+    - R12 (training block) is small (low residual energy)
     - Coupling is small
     """
 
@@ -43,21 +43,25 @@ class RRQR:
         if k is None:
             k = min(m, n)
 
-        # Step 1: initial QRCP Execution
+        #### Step 1: initial QRCP Execution ####
         # standard QR with column pivoting (weak RRQR)
+        # Q is an orthogonal matrix
+        # R is an upper triangular 
+        # P is a permutation matrix that reorders columns of A
         Q, R, P = qr(A, pivoting=True, mode='full')
         P = np.array(P)
 
         iter_count = 0
         while iter_count < self.max_iter:
-            # Step 2: Partition R into leading and trailing blocks
+            #### Step 2: Partition R into leading and trailing blocks ####
             
-            # R11: leading kxk block
-            # R12: trailing k x (n-k) block
+            # R11: leading kxk block <- this are the first k selected columms
+            # R12: trailing k x (n-k) block <- decribes how much of the remaining columns depend on leading ones
             R11 = R[:k, :k]
             R12 = R[:k, :k]
 
-            # Step 3: Compute the coupling matrix T
+            #### Step 3: Compute the coupling matrix T ####
+            #### “strong” feature reordering ####
             # Solve R11 * T = R12 for T (triangular solve)
             # T tells us how much the trailing columns depend on the leading ones
             if R12.shape[1] == 0:
@@ -65,8 +69,8 @@ class RRQR:
                 break
             T = solve_triangular(R11, R12)
 
-            # Step 4: Check the max entry of T for tolerance
-            # Root cause analysis
+            #### Step 4: Check the max entry of T for tolerance ####
+            #### Root cause analysis ####
             i_star, j_star = np.unravel_index(np.abs(T).argmax(), T.shape)
             max_T = np.abs(T[i_star, j_star])
 
@@ -74,14 +78,15 @@ class RRQR:
                 # Coupling is small enough => decomposition is rank-revealing
                 break
             
-            # Step 5: Swap columns based on max entry in T
+            #### Step 5: Swap columns based on max entry in T ####
             # Swap columns: i_star in R11 (leading block), j_star in R12 (trailing block)
+            # If some trailing column depends too much (i.e., large entries in T), we swap that column forward
             col1 = i_star
             col2 = k + j_star
             R[:, [col1, col2]] = R[:, [col2, col1]]     # swap columns
             P[[col1, col2]] = P[[col2, col1]]           # update permuation
 
-            # Step 6: Restore upper triangular structure with a simple QR on affected columns
+            #### Step 6: Restore upper triangular structure with a simple QR on affected columns ####
             # After the column wrap, R is not upper triangular 
             # Re-factor the affected block with QR to zero out the subdiagonal
             rows = slice(i_star, m)
@@ -92,11 +97,13 @@ class RRQR:
 
             iter_count += 1
 
-        # Step 7: Recompute Q for the permutated matrix
+        #### Step 7: Recompute Q for the permutated matrix ####
         # After all swaps, recompute Q to match final R and permutation
         self.Q, R_full = qr(A[:, P], mode = 'full')
         self.R = R_full
+        # P holds the final column permutation indices, ranking from most to least 
         self.P = P
+
         return self
          
     def transform(self, X):
@@ -117,4 +124,14 @@ if __name__ == "__main__":
     print("Permutation indices:", rrqr.P)
     print("R matrix:\n", rrqr.R)
 
+
+############# Testing Output #############
+# Permutation indices: [2 0 1 4 3]
+# R matrix:
+#  [[-1.61375087 -0.68484673 -1.15055347 -0.73668639 -1.09929146]
+#  [ 0.          0.84883787 -0.12360208  0.04364604  0.39824671]
+#  [ 0.          0.         -0.81289437  0.38737364  0.12884917]
+#  [ 0.          0.          0.         -0.39883661 -0.00229488]
+#  [ 0.          0.          0.          0.          0.23004808]
+#  [ 0.          0.          0.          0.          0.        ]]
     
