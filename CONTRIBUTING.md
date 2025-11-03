@@ -146,10 +146,12 @@ N/A
 Provide maintainer contact channel, expected response windows, and where to ask questions.
 
 Maintainers Contact:
-- Jinwoo Baek (Team Lead) - baekji@oregonstate.edu
+- Jinwoo Baek (Team Lead) - baekji@oregonstate.edu  
+
 Response Expectations:
 - Issues/PR comments: within 24–48 hours
-- Security or technical concerns: within 12–24 hours
+- Security or technical concerns: within 12–24 hours  
+
 Questions:
 - Jinwoo Baek (Team Lead) - baekji@oregonstate.edu
 - Joy Lim - limjoy@oregonstate.edu
