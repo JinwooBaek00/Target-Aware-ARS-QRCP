@@ -1,5 +1,5 @@
 
-# 🧭 Meeting Notes — Target-Aware ARS–QRCP (TAAQ)
+# Meeting Notes — Target-Aware ARS–QRCP (TAAQ)
 **Date:** YYYY-MM-DD  
 **Note Taker:** [Name]  
 
