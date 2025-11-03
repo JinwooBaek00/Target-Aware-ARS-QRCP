@@ -4,10 +4,12 @@
 **Note Taker:** [Name]  
 
 ## 1. Attendance
-Jinwoo Baek: Here
-Joy Lim: Here
-Kevin Tran: Here
-Kevin Nguyen: Here
+| Member | Present | Notes |
+|---------|------|-------|
+| Jinwoo B. | Here | ... |
+| Joy L. | Here | ... |
+| Kevin T. | Here | ... |
+| Kevin N. | Here | ... |
 
 ---
 
@@ -22,15 +24,17 @@ Kevin Nguyen: Here
 
 ## 3. Updates and Key Points
 | Title | Summary | Next Step | Due Date |
+|------|---------|-----|-------------|
+| QRCP baseline testing | Completed initial random forest + correlation selector baselines | Document metrics | 2025-11-05 |
+| ... | ... | ... | ... |
+| ... | ... | ... | ... |
 
-
-
----
+----
 
 ## 4. Decisions Made
 - Adopt MoSCoW for feature prioritization.  
 - Next deliverable: baseline comparison table by Nov 10.  
-- Joy rotates out as lead next week.  
+- ...
 
 ---
 
@@ -38,16 +42,16 @@ Kevin Nguyen: Here
 | Risk | Impact | Mitigation |
 |------|---------|-------------|
 | Limited compute access for experiments | Medium | Schedule time on lab GPU early |
-| Missing data documentation | High | Add preprocessing doc by Data Lead |
+| ... | ... | ... |
 
 ---
 
 ## 6. Action Items
-| Task | Owner | Status | Due Date |
-|-------|--------|----------|-----------|
-| Merge RRQR feature selection baseline | Tech Lead | ⏳ In Progress | 2025-11-04 |
-| Update `/docs/algorithm_overview.md` | Doc Lead | 🔲 Pending | 2025-11-06 |
-| Confirm next meeting time | Team Lead | ✅ Done | 2025-11-03 |
+| Task | Status | Due Date |
+|--------|----------|-----------|
+| Merge RRQR feature selection baseline | Tech Lead | In Progress | 2025-11-04 |
+| Confirm next meeting time | Team Lead | Done | 2025-11-03 |
+| ... | ... | ... | ... |
 
 ---
 
