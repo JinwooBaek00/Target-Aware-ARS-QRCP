@@ -116,7 +116,25 @@ Review Process:
 ## CI/CD
 Link to pipeline definitions, list mandatory jobs, how to view logs/re-run jobs, and what must pass before merge/release.
 
-N/A
+**Pipeline Definition:**  
+The CI pipeline is defined in [`.github/workflows/ci.yml`](https://github.com/JinwooBaek00/Target-Aware-ARS-QRCP/blob/main/.github/workflows/ci.yml). It automatically runs on every push or pull request to the `main` branch.
+
+**Mandatory Jobs:**
+- **Lint Check:** `flake8 src/` — ensure code style compliance  
+- **Format Check:** `black --check src/` — verify code formatting  
+- **Import Order Check:** `isort --check-only src/` — verify import sorting  
+- **Unit Tests:** `pytest` — run all tests and report coverage  
+
+**View Logs:**  
+Go to your PR → “Checks” tab → select a job name to view logs and artifacts.
+
+**Re-run Jobs:**  
+If a job fails, authorized users (Team Lead or assigned maintainer) can re-run it via the “Re-run jobs” button in GitHub Actions.
+
+**Merge Requirements:**  
+All mandatory jobs must pass before merging into `main`.  
+PRs with failing checks or unresolved review comments cannot be merged.
+
 
 ## Security & Secrets
 State how to report vulnerabilities, prohibited patterns (hard-coded secrets), dependency update policy, and scanning tools.
