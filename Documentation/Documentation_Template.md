@@ -1,5 +1,5 @@
 
-# 📊 Progress & Documentation Update — Target-Aware ARS–QRCP (TAAQ)
+# Progress & Documentation Update — Target-Aware ARS–QRCP (TAAQ)
 **Date:** YYYY-MM-DD  
 **Sprint / Milestone:** [e.g., Sprint # - Title ]  
 **Status:** On Track / At Risk / Behind  
