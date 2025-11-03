@@ -174,4 +174,4 @@ Questions:
 - Jinwoo Baek (Team Lead) - baekji@oregonstate.edu
 - Joy Lim - limjoy@oregonstate.edu
 - Kevin Tran - trank8@oregonstate.edu
-- Kevin Nguyen - nguyenk2@oregonstate.edu
+- Kevin Nguyen - nguykev2@oregonstate.edu
