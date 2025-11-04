@@ -29,8 +29,8 @@
 | Title | Summary | Next Step | Due Date |
 |------|---------|-----|-------------|
 | TAAQ | algorithm has been implemented and updated | ... | 2025-11-05 |
-| Baseline algorithms | At least 3 baseline algorithms were implemented | Implement more baselines | 11/06 |
-| Experimentation | Run experiment with TAAQ against baseline algorithms | ... | 11/06 |
+| Baseline algorithms | 1 baseline implrmenation from each member | Implement more baselines | 11/06 |
+| Experimentation | LASSO vs TAAQ | experiment againt other baseline algorithms | 11/06 |
 
 ----
 
