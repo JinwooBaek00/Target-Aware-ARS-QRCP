@@ -32,6 +32,12 @@ jobs:
       env:
         PYTHONPATH: ${{ github.workspace }}
       run: pytest --cov=.
+    
+    - name: Clear notebook outputs
+      run: |
+        for nb in *.ipynb; do
+          jupyter nbconvert --ClearOutputPreprocessor.enabled=True --inplace "$nb"
+        done
 
     - name: Test notebooks with nbval
       run: pytest --nbval-lax *.ipynb
