@@ -10,5 +10,6 @@ flake8
 nbval
 seaborn
 torch
+torchvision
 shap
 tqdm
