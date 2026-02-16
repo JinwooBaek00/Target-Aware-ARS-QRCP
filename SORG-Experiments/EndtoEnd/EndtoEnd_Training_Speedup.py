@@ -130,7 +130,7 @@ def _fallback_select_herding_group(X: np.ndarray, y: np.ndarray, k: int) -> np.n
 
 try:
     # Expected API in Baselines.py (you can adapt Baselines to match this)
-    from Baselines import select_random_group, select_herding_group  # type: ignore
+    from Baselines import select_random_group, select_herding_group, subzero_selection  # type: ignore
 except Exception:
     # If Baselines.py is not ready, fall back to the local implementations
     select_random_group = _fallback_select_random_group
@@ -197,7 +197,7 @@ def seed_everything(seed: int) -> None:
 # ============================================================
 # Feature cache (reuse E1/E8 style)
 # ============================================================
-def cifar_feat_paths(dataset: str, encoder: str) -> Dict[str, str]:
+def imagenet_feat_paths(dataset: str, encoder: str) -> Dict[str, str]:
     tag = f"{dataset}_{encoder}"
     return {
         "train_X": os.path.join(FEATURE_CACHE, f"{tag}_train_X.npy"),
@@ -249,38 +249,38 @@ def extract_all(model: nn.Module, loader: DataLoader, device: str):
 
 def get_feature_data(cfg: E9Config):
     """
-    Load CIFAR-100 feature cache (E1/E8) or build it once if missing.
+    Load ImageNet-1K feature cache (E1/E8) or build it once if missing.
     """
-    paths = cifar_feat_paths(cfg.dataset, cfg.encoder)
+    paths = imagenet_feat_paths(cfg.dataset, cfg.encoder)
     needed = ("train_X", "train_y", "test_X", "test_y", "meta")
     if all(os.path.exists(paths[k]) for k in needed):
-        print(">>> Loading cached CIFAR100 features (E1/E8 cache)...")
+        print(">>> Loading cached ImageNet features ...")
         Xt = np.load(paths["train_X"])
         Yt = np.load(paths["train_y"])
         Xte = np.load(paths["test_X"])
         Yte = np.load(paths["test_y"])
         return Xt, Yt, Xte, Yte
 
-    print(">>> Feature cache missing. Extracting CIFAR100 features once (for E9)...")
+    print(">>> Feature cache missing. Extracting ImageNet features (for E9)...")
     model, transform = get_resnet50_encoder(cfg.device)
 
-    train_ds = torchvision.datasets.ImageNet(
-        TORCH_DATASETS, train=True, download=True, transform=transform
-    )
-    test_ds = torchvision.datasets.ImageNet(
-        TORCH_DATASETS, train=False, download=True, transform=transform
-    )
+    imagenet_root = os.path.join(TORCH_DATASETS, "imagenet")
+    train_dir = os.path.join(imagenet_root, "train")
+    val_dir = os.path.join(imagenet_root, "val")
+
+    train_ds = datasets.ImageFolder(root=train_dir, transform=transform)
+    test_ds = datasets.ImageFolder(root=val_dir, transform=transform)
 
     train_loader = DataLoader(
         train_ds,
-        batch_size=512,
+        batch_size=256,
         num_workers=cfg.num_workers,
         shuffle=False,
         pin_memory=True,
     )
     test_loader = DataLoader(
         test_ds,
-        batch_size=512,
+        batch_size=256,
         num_workers=cfg.num_workers,
         shuffle=False,
         pin_memory=True,
@@ -371,7 +371,7 @@ def get_imagenet_datasets():
     Standard ImageNet-1K training / test pipelines.
     Uses ImageFolder to read from extracted train/val directories.
     """
-    # CORRECT ImageNet stats (Not CIFAR!)
+
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
 
@@ -627,6 +627,10 @@ def main():
     # Group Herding 20%
     print("[Selection] Group Herding-20% subset...")
     subsets["herding20"] = select_herding_group(Xt_s, Yt, k)
+
+    # SubZero 20%
+    print("[Selection] SubZero-20% subset...")
+    #TODO
 
     # SORG Group 20%
     print("[Selection] SORG-20% subset (Group + Guided)...")
