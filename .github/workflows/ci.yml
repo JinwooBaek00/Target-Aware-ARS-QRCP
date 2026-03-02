@@ -28,10 +28,10 @@ jobs:
     - name: Lint
       run: flake8 .
 
-    - name: Run tests with coverage
+    - name: Run tests in SORG-Experiments with coverage
       env:
         PYTHONPATH: ${{ github.workspace }}
-      run: pytest --cov=.
+      run: pytest --cov=SORG-Experiments SORG-Experiments
 
     - name: Test notebooks with nbval
-      run: pytest --nbval-lax *.ipynb
+      run: pytest --nbval-lax SORG-Experiments/*.ipynb
