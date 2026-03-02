@@ -26,8 +26,17 @@ Prerequisites
 - Access to the private GitHub repository  
 
 Setup:
-N/A  
-
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/JinwooBaek00/Target-Aware-ARS-QRCP.git
+   cd Target-Aware-ARS-QRCP
+2. Install Dependencies:
+   ```bash
+    pip install -r requirements.txt
+3. Run Experiment script:
+   ```bash
+   python SORG-Experiments/<experiment_folder>/<script_name>.py
+   
 Environment Variables & Secrets:
 N/A  
 
@@ -48,7 +57,7 @@ Branch Naming Conventions:
 Rebasing vs. Merging:
 - Use rebase to update your feature branch with the latest dev changes.
 - Use merge only when merging approved PRs into main or dev.
-- 
+  
 ## Issues & Planning
 Explain how to file issues, required templates/labels, estimation, and triage/assignment practices.  
 
@@ -89,7 +98,7 @@ Commands:
 Define required test types, how to run tests, expected coverage thresholds, and when new/updated tests are mandatory.
 
 Required Test Types:
-- Integration tests for baseline and TAAQ algorithms
+- Integration tests for baseline and SORG algorithms
 - Reproducibility tests for random sampling functions
 
 Commands:

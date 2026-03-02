@@ -1,5 +1,5 @@
 # Recommended filename: E9_EndtoEnd_Training_Speedup.py
-# E9.py (ICML-SA-ready: End-to-End Training Speedup | CIFAR-100 | SORG vs Baselines)
+# E9.py (ICML-SA-ready: End-to-End Training Speedup | ImageNet-1K | SORG vs Baselines)
 # -*- coding: utf-8 -*-
 
 import os
@@ -22,12 +22,12 @@ import numpy as np
 import pandas as pd
 
 # ============================================================
-# [Rule #1] Force caches/data under /nfs/hpc/share/baekji
+# [Rule #1] Force caches/data under /nfs/hpc/share/limjoy
 # ============================================================
-BASE_NFS = "/nfs/hpc/share/baekji"
+BASE_NFS = "/nfs/hpc/share/limjoy/SORG"
 TORCH_HOME = os.path.join(BASE_NFS, "torch_home")
 TORCH_DATASETS = os.path.join(BASE_NFS, "torch_datasets")
-FEATURE_CACHE = os.path.join(BASE_NFS, "E1_feature_cache")  # Reuse E1 cache (CIFAR100 + ResNet18 features)
+FEATURE_CACHE = os.path.join(BASE_NFS, "E1_feature_cache")  # Reuse E1 cache (ImageNet1K + ResNet50 features)
 
 os.makedirs(TORCH_HOME, exist_ok=True)
 os.makedirs(TORCH_DATASETS, exist_ok=True)
@@ -42,6 +42,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, Subset
 import torchvision
 import torchvision.transforms as T
+import torchvision.datasets as datasets
 
 from sklearn.preprocessing import StandardScaler
 
@@ -129,7 +130,7 @@ def _fallback_select_herding_group(X: np.ndarray, y: np.ndarray, k: int) -> np.n
 
 try:
     # Expected API in Baselines.py (you can adapt Baselines to match this)
-    from Baselines import select_random_group, select_herding_group  # type: ignore
+    from Baselines import select_random_group, select_herding_group, subzero_selection  # type: ignore
 except Exception:
     # If Baselines.py is not ready, fall back to the local implementations
     select_random_group = _fallback_select_random_group
@@ -141,8 +142,8 @@ except Exception:
 # ============================================================
 @dataclass
 class E9Config:
-    dataset: str = "cifar100"
-    encoder: str = "resnet18"
+    dataset: str = "imagenet1k"
+    encoder: str = "resnet50"
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Coreset budget for subset runs (e.g., 20%)
@@ -196,7 +197,7 @@ def seed_everything(seed: int) -> None:
 # ============================================================
 # Feature cache (reuse E1/E8 style)
 # ============================================================
-def cifar_feat_paths(dataset: str, encoder: str) -> Dict[str, str]:
+def imagenet_feat_paths(dataset: str, encoder: str) -> Dict[str, str]:
     tag = f"{dataset}_{encoder}"
     return {
         "train_X": os.path.join(FEATURE_CACHE, f"{tag}_train_X.npy"),
@@ -207,21 +208,21 @@ def cifar_feat_paths(dataset: str, encoder: str) -> Dict[str, str]:
     }
 
 
-def get_resnet18_encoder(device: str):
+def get_resnet50_encoder(device: str):
     """
-    Pretrained ResNet18 encoder for feature extraction (same as E1/E8).
+    Pretrained ResNet50 encoder for feature extraction (same as E1/E8).
     Used only for selection, NOT for end-to-end training.
     """
     try:
-        w = torchvision.models.ResNet18_Weights.DEFAULT
-        m = torchvision.models.resnet18(weights=w)
+        w = torchvision.models.ResNet50_Weights.IMAGENET1K_V2
+        m = torchvision.models.resnet50(weights=w)
         transform = w.transforms()
     except Exception:
         m = torchvision.models.resnet18(pretrained=True)
         transform = T.Compose(
             [
-                T.Resize(256),
-                T.CenterCrop(224),
+                T.RandomResizedCrop(224),
+                T.RandomHorizontalFlip(),
                 T.ToTensor(),
                 T.Normalize(
                     mean=[0.485, 0.456, 0.406],
@@ -248,38 +249,38 @@ def extract_all(model: nn.Module, loader: DataLoader, device: str):
 
 def get_feature_data(cfg: E9Config):
     """
-    Load CIFAR-100 feature cache (E1/E8) or build it once if missing.
+    Load ImageNet-1K feature cache (E1/E8) or build it once if missing.
     """
-    paths = cifar_feat_paths(cfg.dataset, cfg.encoder)
+    paths = imagenet_feat_paths(cfg.dataset, cfg.encoder)
     needed = ("train_X", "train_y", "test_X", "test_y", "meta")
     if all(os.path.exists(paths[k]) for k in needed):
-        print(">>> Loading cached CIFAR100 features (E1/E8 cache)...")
+        print(">>> Loading cached ImageNet features ...")
         Xt = np.load(paths["train_X"])
         Yt = np.load(paths["train_y"])
         Xte = np.load(paths["test_X"])
         Yte = np.load(paths["test_y"])
         return Xt, Yt, Xte, Yte
 
-    print(">>> Feature cache missing. Extracting CIFAR100 features once (for E9)...")
-    model, transform = get_resnet18_encoder(cfg.device)
+    print(">>> Feature cache missing. Extracting ImageNet features (for E9)...")
+    model, transform = get_resnet50_encoder(cfg.device)
 
-    train_ds = torchvision.datasets.CIFAR100(
-        TORCH_DATASETS, train=True, download=True, transform=transform
-    )
-    test_ds = torchvision.datasets.CIFAR100(
-        TORCH_DATASETS, train=False, download=True, transform=transform
-    )
+    imagenet_root = os.path.join(TORCH_DATASETS, "imagenet")
+    train_dir = os.path.join(imagenet_root, "train")
+    val_dir = os.path.join(imagenet_root, "val")
+
+    train_ds = datasets.ImageFolder(root=train_dir, transform=transform)
+    test_ds = datasets.ImageFolder(root=val_dir, transform=transform)
 
     train_loader = DataLoader(
         train_ds,
-        batch_size=512,
+        batch_size=256,
         num_workers=cfg.num_workers,
         shuffle=False,
         pin_memory=True,
     )
     test_loader = DataLoader(
         test_ds,
-        batch_size=512,
+        batch_size=256,
         num_workers=cfg.num_workers,
         shuffle=False,
         pin_memory=True,
@@ -363,53 +364,61 @@ def select_sorg_group(
 
 
 # ============================================================
-# CIFAR-100 datasets for end-to-end training
+# ImageNet-1K datasets 
 # ============================================================
-def get_cifar_datasets():
+def get_imagenet_datasets():
     """
-    Standard CIFAR-100 training / test pipelines for end-to-end training.
-    We use 224x224 resizing to match standard ResNet-18 configuration.
+    Standard ImageNet-1K training / test pipelines.
+    Uses ImageFolder to read from extracted train/val directories.
     """
-    mean = [0.5071, 0.4867, 0.4408]
-    std = [0.2675, 0.2565, 0.2761]
 
-    train_transform = T.Compose(
-        [
-            T.Resize(256),
-            T.RandomResizedCrop(224, scale=(0.2, 1.0)),
-            T.RandomHorizontalFlip(),
-            T.ToTensor(),
-            T.Normalize(mean=mean, std=std),
-        ]
-    )
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
 
-    test_transform = T.Compose(
-        [
-            T.Resize(256),
-            T.CenterCrop(224),
-            T.ToTensor(),
-            T.Normalize(mean=mean, std=std),
-        ]
-    )
+    train_transform = T.Compose([
+        T.RandomResizedCrop(224),
+        T.RandomHorizontalFlip(),
+        T.ToTensor(),
+        T.Normalize(mean=mean, std=std),
+    ])
 
-    train_ds = torchvision.datasets.CIFAR100(
-        TORCH_DATASETS, train=True, download=True, transform=train_transform
-    )
-    test_ds = torchvision.datasets.CIFAR100(
-        TORCH_DATASETS, train=False, download=True, transform=test_transform
-    )
+    test_transform = T.Compose([
+        T.Resize(256),
+        T.CenterCrop(224),
+        T.ToTensor(),
+        T.Normalize(mean=mean, std=std),
+    ])
+
+    # Point to the 'imagenet' folder inside your TORCH_DATASETS
+    imagenet_root = os.path.join(TORCH_DATASETS, "imagenet")
+    
+    train_dir = os.path.join(imagenet_root, "train")
+    val_dir = os.path.join(imagenet_root, "val")
+
+    # Sanity check paths exist
+    if not os.path.exists(train_dir):
+        raise FileNotFoundError(f"Training folder not found at: {train_dir}")
+    if not os.path.exists(val_dir):
+        raise FileNotFoundError(f"Validation folder not found at: {val_dir}")
+
+    print(f"Loading ImageNet Train from: {train_dir}")
+    train_ds = datasets.ImageFolder(root=train_dir, transform=train_transform)
+    
+    print(f"Loading ImageNet Val from:   {val_dir}")
+    test_ds = datasets.ImageFolder(root=val_dir, transform=test_transform)
+    
     return train_ds, test_ds
 
 
 # ============================================================
 # ResNet18 model for end-to-end training
 # ============================================================
-def create_resnet18_cifar(num_classes: int, device: str) -> nn.Module:
+def create_resnet50_imagenet(num_classes: int, device: str) -> nn.Module:
     """
-    Standard torchvision ResNet-18, trained from scratch on CIFAR-100.
+    Standard torchvision ResNet-50, trained from scratch on ImageNet-1K.
     Input size is 224x224 due to the transforms above.
     """
-    model = torchvision.models.resnet18(weights=None)
+    model = torchvision.models.resnet50(weights=None)
     in_feat = model.fc.in_features
     model.fc = nn.Linear(in_feat, num_classes)
     model.to(device)
@@ -585,7 +594,7 @@ def main():
         json.dump(asdict(CFG), f, indent=2)
 
     print("============================================================")
-    print("E9: End-to-End Training Speedup (CIFAR-100 | ResNet18)")
+    print("E9: End-to-End Training Speedup (ImageNet-1K | ResNet50)")
     print("------------------------------------------------------------")
     print(f"Device:        {CFG.device}")
     print(f"Budget (frac): {CFG.budget_frac:.2f}")
@@ -619,6 +628,10 @@ def main():
     print("[Selection] Group Herding-20% subset...")
     subsets["herding20"] = select_herding_group(Xt_s, Yt, k)
 
+    # SubZero 20%
+    print("[Selection] SubZero-20% subset...")
+    #TODO
+
     # SORG Group 20%
     print("[Selection] SORG-20% subset (Group + Guided)...")
     subsets["sorg20"] = select_sorg_group(
@@ -635,9 +648,9 @@ def main():
     print(f"[Selection] Saved index subsets to {sel_save_path}")
 
     # 2) End-to-end training on CIFAR-100
-    print("\n[Data] Loading CIFAR-100 datasets for end-to-end training...")
-    train_ds, test_ds = get_cifar_datasets()
-    num_classes = 100
+    print("\n[Data] Loading ImageNet-1K datasets for end-to-end training...")
+    train_ds, test_ds = get_imagenet_datasets()
+    num_classes = 1000
     device = CFG.device
 
     test_loader = DataLoader(
@@ -675,7 +688,7 @@ def main():
             pin_memory=True,
         )
 
-        model = create_resnet18_cifar(num_classes=num_classes, device=device)
+        model = create_resnet50_imagenet(num_classes=num_classes, device=device)
         logs = train_model(
             method=method_name,
             model=model,
