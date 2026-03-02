@@ -3,8 +3,6 @@
 # -*- coding: utf-8 -*-
 
 import os
-TORCH_HOME = os.getenv("TORCH_HOME", os.path.expanduser("~/.cache/torch"))
-os.makedirs(TORCH_HOME, exist_ok=True)
 
 # ============================================================
 # [Critical] Stabilize CPU thread usage (HPC-safe)

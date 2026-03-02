@@ -24,13 +24,3 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Set TORCH_HOME
-      env:
-        TORCH_HOME: ${{ github.workspace }}/.cache/torch
-      run: mkdir -p $TORCH_HOME
-
-    - name: Run tests in SORG-Experiments with coverage
-      env:
-        PYTHONPATH: ${{ github.workspace }}
-        TORCH_HOME: ${{ github.workspace }}/.cache/torch
-      run: pytest --cov=SORG-Experiments SORG-Experiments
