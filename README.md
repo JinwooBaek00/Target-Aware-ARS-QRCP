@@ -1,4 +1,4 @@
-# Target-Aware-ARS-QRCP
+# SORG - SoftNorm gated Orthogonal Residual Greedy
 
 ![CI](https://github.com/JinwooBaek00/Target-Aware-ARS-QRCP/actions/workflows/ci.yml/badge.svg)
 
