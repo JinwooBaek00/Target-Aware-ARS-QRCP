@@ -1,4 +1,4 @@
-# E8.py (Final Defense: Hyperparameter Sensitivity | SORG Group Mode)
+# (Final Defense: Hyperparameter Sensitivity | SORG Group Mode)
 # -*- coding: utf-8 -*-
 
 import os

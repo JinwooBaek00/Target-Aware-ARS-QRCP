@@ -1,5 +1,5 @@
-# E5_Outlier_Robustness.py
-# E5: Outlier Robustness | SORG (NoScale) vs Baselines | Camera-ready
+# Outlier_Robustness.py
+# Outlier Robustness | SORG (NoScale) vs Baselines | Camera-ready
 # -*- coding: utf-8 -*-
 
 import os
