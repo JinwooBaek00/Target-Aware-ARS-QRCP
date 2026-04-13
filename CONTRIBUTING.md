@@ -36,12 +36,22 @@ Setup:
 3. Run Experiment script:
    ```bash
    python SORG-Experiments/<experiment_folder>/<script_name>.py
-   
+
 Environment Variables & Secrets:
 N/A  
 
 Running Locally:
 N/A  
+
+## SORG Hyperparameter Sweep & Experiment Setup (Hyper_Sensitivity.py)
+
+This project includes a dedicated sensitivity analysis for SORG.
+
+### How to Run
+
+```bash
+python Hyper_Sensitivity.py
+```
 
 ## Branching & Workflow
 Describe the workflow (e.g., trunk-based or GitFlow), default branch, branch naming, and when to rebase vs. merge.  
