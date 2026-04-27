@@ -4,13 +4,13 @@
 
 **SORG** (SoftNorm gated Orthogonal Residual Greedy) is a modular, zero-retraining data selection algorithm designed for machine learning researchers and data scientists who need to extract highly informative, small subsets from massive datasets.
 
-## 📖 About the Project
+## About the Project
 
 Modern machine learning datasets are massive, noisy, and incredibly expensive to process. When researchers try to extract a smaller "starter pack" of data to speed up their workflow, traditional selection algorithms often fail. They get distracted by massive outliers, or they pick data that doesn't align with the final goal. This forces researchers to either waste expensive GPU hours training on redundant data or spend weeks retraining models just to figure out which samples are actually useful.
 
 **The Solution:** SORG proves that you do not need to train a model to understand your data. By combining a "projector-greedy" mathematical approach with a unique stabilizing module (SoftNorm), SORG instantly and intelligently compresses a dataset using only its frozen features—completely ignoring noisy outliers and saving massive amounts of computational overhead.
 
-## ALgorithm
+## Algorithm
 <img width="3347" height="1755" alt="image" src="https://github.com/user-attachments/assets/5662aab7-2b85-4644-aa48-fe36b26f7765" />
 
 ## Key Features
