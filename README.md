@@ -45,3 +45,5 @@ Modern machine learning datasets are massive, noisy, and incredibly expensive to
 - Joy Lim (limjoy@oregonstate.edu)
 - Kevin Nguyen (nguykev2@oregonstate.edu)
 - Kevin Tran (trank8@oregonstate.edu)
+
+Feel free to contact any of us at the emails above if you have any questions!
