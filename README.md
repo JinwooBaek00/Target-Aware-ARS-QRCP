@@ -18,10 +18,10 @@
    python SORG-Experiments/<experiment_folder>/<script_name>.py
 
 ⚙️ Specs Recommendation:
-GPU (NVIDIA with CUDA support)
-16–32 GB RAM minimum
-Multi-core CPU
-Linux or macOS environment preferred
+- GPU (NVIDIA with CUDA support)
+- 16–32 GB RAM minimum
+- Multi-core CPU
+- Linux or macOS environment preferred
 
   
 ## Team Members
