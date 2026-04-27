@@ -42,7 +42,7 @@ Modern machine learning datasets are massive, noisy, and incredibly expensive to
 ## 📄 Paper
 
 📥 **Read the full paper:**  
-[Download PDF](./paper.pdf)
+[Download PDF](./SORG_for_CS462.pdf)
 
   
 ## Team Members
