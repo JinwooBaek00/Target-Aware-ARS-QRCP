@@ -10,6 +10,9 @@ Modern machine learning datasets are massive, noisy, and incredibly expensive to
 
 **The Solution:** SORG proves that you do not need to train a model to understand your data. By combining a "projector-greedy" mathematical approach with a unique stabilizing module (SoftNorm), SORG instantly and intelligently compresses a dataset using only its frozen features—completely ignoring noisy outliers and saving massive amounts of computational overhead.
 
+## ALgorithm
+<img width="3347" height="1755" alt="image" src="https://github.com/user-attachments/assets/5662aab7-2b85-4644-aa48-fe36b26f7765" />
+
 ## Key Features
 
 * **Zero-Retraining Compression:** Skip the expensive warm-up phases. SORG operates entirely on frozen, pre-extracted features, allowing you to instantly reduce your dataset size by up to 90% before you ever spin up a heavy deep learning training loop.
