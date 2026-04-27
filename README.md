@@ -11,7 +11,10 @@ Modern machine learning datasets are massive, noisy, and incredibly expensive to
 **The Solution:** SORG proves that you do not need to train a model to understand your data. By combining a "projector-greedy" mathematical approach with a unique stabilizing module (SoftNorm), SORG instantly and intelligently compresses a dataset using only its frozen features—completely ignoring noisy outliers and saving massive amounts of computational overhead.
 
 ## Algorithm
-<img width="3347" height="1755" alt="image" src="https://github.com/user-attachments/assets/5662aab7-2b85-4644-aa48-fe36b26f7765" />
+<img width="3347" height="1755" alt="image" src="https://github.com/user-attachments/assets/5662aab7-2b85-4644-aa48-fe36b26f7765" alt="Workflow and Logic of the SORG Subset Selection Algorithm." />
+
+**Workflow and Logic of the SORG Subset Selection Algorithm.** 
+The flowchart details the inputs (Frozen Features X, Budget k, and optional secondary inputs), the initialization step, and the core iterative greedy process. It shows how each candidate is scored by measuring new information and applying SoftNorm downweighting. The scored candidates are then integrated with optional guidance and grouping constraints (using r and g) to select the best candidate in each iteration until the budget k is met.
 
 ## Key Features
 
