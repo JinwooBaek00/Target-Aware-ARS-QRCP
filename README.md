@@ -39,6 +39,11 @@ Modern machine learning datasets are massive, noisy, and incredibly expensive to
 - Multi-core CPU
 - Linux or macOS environment preferred
 
+## 📄 Paper
+
+📥 **Read the full paper:**  
+[Download PDF](./paper.pdf)
+
   
 ## Team Members
 - Jinwoo Baek (baekji@oregonstate.edu)
