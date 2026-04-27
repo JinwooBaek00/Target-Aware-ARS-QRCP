@@ -48,7 +48,7 @@ The flowchart details the inputs (Frozen Features X, Budget k, and optional seco
 ## 📄 Paper
 
 📥 **Read the full paper:**  
-[Download PDF](./SORG_for_CS462.pdf)
+[Read PDF](./SORG_for_CS462.pdf)
 
   
 ## Team Members
