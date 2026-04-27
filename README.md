@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/JinwooBaek00/Target-Aware-ARS-QRCP/actions/workflows/ci.yml/badge.svg)
 
-**SORG** (Subset Optimized Record Grouping) is a modular, zero-retraining data selection algorithm designed for machine learning researchers and data scientists who need to extract highly informative, small subsets from massive datasets.
+**SORG** (SoftNorm gated Orthogonal Residual Greedy) is a modular, zero-retraining data selection algorithm designed for machine learning researchers and data scientists who need to extract highly informative, small subsets from massive datasets.
 
 ## 📖 About the Project
 
