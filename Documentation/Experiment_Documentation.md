@@ -83,3 +83,100 @@ in classification accuracy and closely track the supervised L1-Logistic
 Oracle, especially at lower budgets
 
 ------------------------------------------------------------------------
+
+## 3. Outlier Robustness Experiment
+
+### Overview
+
+The outlier robustness experiment evaluates the stability of the SORG algorithm under corrupted training data. The goal is to determine whether SORG can still select informative subsets when the feature space contains a significant fraction of outliers.
+
+We compare SORG against standard coreset and clustering-based baselines under varying levels of dataset contamination.
+
+### Methodology
+
+**1. Feature Extraction (Selection Phase)**  
+Images from CIFAR-100 are passed through a pretrained ResNet-18 model to obtain feature embeddings. These embeddings provide a compact numerical representation of each image.
+
+**2. Outlier Injection**  
+To simulate real-world data corruption, synthetic outliers are injected into the training pool:
+
+- A fraction of training samples is replaced with outlier samples
+- Outliers are generated using heavy-tailed t-distributions
+- Outlier feature norms are scaled significantly larger than clean samples
+- Contamination levels evaluated: 0%, 10%, 30%
+
+**3. Coreset Selection**  
+SORG selects subsets from the contaminated dataset in a group-wise manner. Baseline methods include:
+
+- Random selection
+- Herding selection
+- K-Center greedy selection
+- K-Means minibatch coreset
+- SORG (robust selection with SoftNorm gating)
+- SORG-NoGate (ablation without gating mechanism)
+
+**4. Model Training (Evaluation Phase)**  
+A linear classifier (Ridge regression) is trained using the selected subset. Performance is evaluated on the clean CIFAR-100 test set.
+
+### Evaluation Metrics
+
+- **Test Accuracy**
+- **Outlier Fraction in Selected Subset**
+- **Training Time**
+
+### Expected Outcome
+
+SORG is expected to reduce the selection of outliers even under high contamination rates, leading to improved robustness and higher accuracy compared to baseline methods.
+
+------------------------------------------------------------------------
+
+## 4. Backdoor Robustness Experiment
+
+### Overview
+
+The backdoor robustness experiment evaluates the resilience of SORG under a security threat model involving both label noise and backdoor (Trojan) attacks. The goal is to determine whether SORG can still select safe and representative subsets when the training data is intentionally poisoned.
+
+We compare Guided SORG against standard coreset and clustering-based baselines under adversarial data corruption.
+
+### Methodology
+
+**1. Feature Extraction (Selection Phase)**  
+Images from CIFAR-100 are passed through a pretrained ResNet-18 model to obtain feature embeddings. All embeddings are L2-normalized for consistency.
+
+**2. Backdoor and Noise Injection**  
+Two types of corruption are introduced into the training data:
+
+- Label noise (20%): random corruption of training labels
+- Backdoor attack (5%): a fixed visual patch is inserted into images and assigned to a target class
+
+The patch acts as a trigger that causes misclassification during evaluation.
+
+**3. Coreset Selection**  
+SORG performs guided subset selection under the poisoned training distribution. Baseline methods include:
+
+- Random selection
+- Herding selection
+- K-Center greedy selection
+- K-Means minibatch coreset
+- SORG (guided selection with SoftNorm gating enabled)
+- SORG-NoGate (ablation without gating mechanism)
+
+**4. Model Training (Evaluation Phase)**  
+A linear classifier is trained on the selected subset. Performance is evaluated on:
+
+- Clean CIFAR-100 test set
+- Backdoored test set
+
+### Evaluation Metrics
+
+- **Test Accuracy (Clean Data)**
+- **Attack Success Rate (ASR)**
+- **Backdoor Fraction in Selected Subset**
+- **Label Noise Fraction in Selected Subset**
+- **Training Time**
+
+### Expected Outcome
+
+SORG is expected to reduce the selection of poisoned samples, leading to lower attack success rates and improved robustness compared to baseline methods, while maintaining competitive clean accuracy.
+
+------------------------------------------------------------------------
