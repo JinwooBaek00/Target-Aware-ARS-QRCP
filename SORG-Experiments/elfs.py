@@ -29,12 +29,12 @@ def _validate_inputs(X: np.ndarray, scores: np.ndarray) -> tuple[np.ndarray, np.
     return X_arr, scores_arr
 
 
-def _resolve_scores(config: dict) -> np.ndarray:
+def _resolve_scores(X: np.ndarray, config: dict) -> np.ndarray:
     scores = config.get("scores")
     if scores is None:
-        raise NotImplementedError(
-            "ELFS requires proxy training-dynamics scores in config['scores'] to run. "
-            "Pass pseudo-label-based difficulty scores from the experiment bundle."
+        raise ValueError(
+            "ELFS requires pseudo-label-based training-dynamics scores. Provide "
+            "config['scores'] computed from the ELFS pseudo-label pipeline."
         )
     return np.asarray(scores, dtype=np.float64).reshape(-1)
 
@@ -44,7 +44,7 @@ def _resolve_beta(
     budget: int,
     config: dict,
 ) -> float:
-    beta = config.get("beta", config.get("hard_prune_rate", DEFAULT_BETA))
+    beta = config.get("beta", DEFAULT_BETA)
     if beta is not None:
         beta_value = float(beta)
         if not 0.0 <= beta_value <= 1.0:
@@ -79,7 +79,7 @@ def select(
 ) -> np.ndarray:
     del guidance, groups, seed
     cfg = config or {}
-    scores = _resolve_scores(cfg)
+    scores = _resolve_scores(X, cfg)
     X_arr, scores_arr = _validate_inputs(X, scores)
 
     n = X_arr.shape[0]
@@ -106,3 +106,4 @@ def select(
     if selected.size != budget:
         raise RuntimeError(f"ELFS selected {selected.size} examples, expected {budget}.")
     return np.sort(selected.astype(np.int64, copy=False))
+
