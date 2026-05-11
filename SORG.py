@@ -1,322 +1,347 @@
-# SORG.py (Single Algorithm: Simple + Strong)  [NO do_scaling]
-# -*- coding: utf-8 -*-
+from __future__ import annotations
 
 import numpy as np
-from sklearn.base import BaseEstimator, TransformerMixin
-from typing import Optional
 
 
-class SORG(BaseEstimator, TransformerMixin):
-    """
-    One-and-only SORG (context-free):
-      - SoftNorm Gate (deterministic; no exposed threshold)
-      - Orthogonal Residual Greedy (implicit; no full matrix updates)
-      - Optional Group-balanced selection via repeated same algorithm
+NAME = "sorg"
+SUPPORTED_VARIANTS = ("core", "gate", "guided", "grouped", "full")
+DEFAULT_ALPHA = 1.0
+DEFAULT_P = 2.0
+DEFAULT_EPS = 1e-12
+DEFAULT_RHO_MIN = 1e-6
+DEFAULT_SOFTNORM_C = 4.0
+DEFAULT_GROUP_AXIS = "auto"
 
-    Canonical view:
-      - Candidates are columns.
-      - M shape: (d, N) where d is row-dim and N is #candidates.
 
-    Typical usage:
-      - Data coreset / Few-shot:
-          SORG(k=...).fit(M=embeddings.T, groups=labels)
-      - Token selection:
-          SORG(k=...).fit(M=token_features.T, r=np.mean(token_features, axis=0))
-      - Generic selection:
-          SORG(k=...).fit(M, r=optional)
+def _canonicalize_candidates(
+    X: np.ndarray,
+    guidance: np.ndarray | None,
+    candidates_axis: str,
+) -> tuple[np.ndarray, np.ndarray | None]:
+    if X.ndim != 2:
+        raise ValueError(f"SORG expects a 2D candidate array, got shape {X.shape}.")
 
-    Design constraints:
-      - No context, no thr, no variants.
-      - Deterministic single algorithm.
-    """
+    guidance_vec = None if guidance is None else np.asarray(guidance, dtype=np.float64).reshape(-1)
+    X_arr = np.asarray(X, dtype=np.float64)
 
-    def __init__(
-        self,
-        k: int,
-        alpha: float = 1.0,          # energy removal strength (1.0 = full)
-        p_norm: float = 2.0,         # gate sharpness (<=0 disables gate)
-        epsilon: float = 1e-9,
-        min_multiplier: float = 1e-12,
-    ):
-        self.k = int(k)
-        self.alpha = float(alpha)
-        self.p_norm = float(p_norm)
-        self.epsilon = float(epsilon)
-        self.min_multiplier = float(min_multiplier)
-
-        self.selected_indices_ = None
-        self.n_candidates_ = None
-
-    # -------------------------------------------------------------------------
-    # Input canonicalization (minimal + safe)
-    # -------------------------------------------------------------------------
-    def _canonicalize(self, M, r, groups):
-        M = np.asarray(M, dtype=np.float32)
-        if M.ndim != 2:
-            raise ValueError("M must be a 2D array.")
-
-        d, N = M.shape
-
-        if groups is not None:
-            groups = np.asarray(groups)
-            if groups.ndim != 1:
-                raise ValueError("groups must be 1D.")
-            # If user passed candidates along rows, transpose once
-            if groups.shape[0] == d and groups.shape[0] != N:
-                M = M.T
-                d, N = M.shape
-            if groups.shape[0] != N:
-                raise ValueError(f"groups length mismatch: got {groups.shape[0]}, expected {N}")
-
-        if r is not None:
-            r = np.asarray(r, dtype=np.float32).reshape(-1)
-            # If r matches columns but not rows and no other hints, transpose once
-            if (r.shape[0] == N and r.shape[0] != d) and (groups is None):
-                M = M.T
-                d, N = M.shape
-            if r.shape[0] != d:
-                raise ValueError(f"r length mismatch: got {r.shape[0]}, expected {d}")
-            r = r.reshape(-1, 1)
-
-        return M, r, groups
-
-    # -------------------------------------------------------------------------
-    # Soft norm gate (deterministic; no exposed threshold)
-    #   z = ||x|| / median(||x||)
-    #   thr = median(z) + C * MAD(z)   (C fixed)
-    #   w = sigmoid(p_norm * (thr - z))
-    # -------------------------------------------------------------------------
-    def _soft_norm_weight(self, norms_sq: np.ndarray, valid: np.ndarray) -> np.ndarray:
-        n = norms_sq.shape[0]
-        if self.p_norm <= 0:
-            return np.ones(n, dtype=np.float32)
-
-        norms = np.sqrt(np.maximum(norms_sq, 0.0)).astype(np.float32)
-        v = norms[valid]
-        if v.size == 0:
-            return np.ones(n, dtype=np.float32)
-
-        base = float(np.median(v) + 1e-12)
-        z = norms / base
-
-        z_v = z[valid]
-        med = float(np.median(z_v))
-        mad = float(np.median(np.abs(z_v - med)) + 1e-12)
-
-        C = 4.0  # fixed constant (BN/LN-like)
-        thr = med + C * mad
-
-        beta = float(self.p_norm)
-        t = beta * (z - thr)
-
-        t = np.clip(t, -60.0, 60.0)
-        w = 1.0 / (1.0 + np.exp(t))
-        w = np.clip(w, self.min_multiplier, 1.0).astype(np.float32)
-        return w
-
-    # -------------------------------------------------------------------------
-    # Core greedy selection (single run)
-    #   - implicit orthogonalization: no full M updates
-    #   - updates only:
-    #       residual_norms_sq (N,)
-    #       corr (N,) and r_res (d,1) if guided
-    #       Q basis (d,t)
-    # -------------------------------------------------------------------------
-    def _fit_single(self, M: np.ndarray, r: Optional[np.ndarray]):
-        d, N = M.shape
-        self.n_candidates_ = int(N)
-
-        if self.k <= 0 or N == 0:
-            self.selected_indices_ = np.array([], dtype=int)
-            return self
-
-        k_target = min(self.k, N)
-
-        # Fixed behavior: no scaling
-        M_work = M.astype(np.float32, copy=True)
-        r_work = None if r is None else np.asarray(r, dtype=np.float32).reshape(-1, 1)
-
-        # Base norms (for gate) + residual norms (for greedy)
-        norms_sq0 = np.sum(M_work * M_work, axis=0).astype(np.float32)
-        residual_norms_sq = norms_sq0.copy()
-
-        corr = None
-        r_res = None
-        if r_work is not None:
-            r_res = r_work.astype(np.float32, copy=True)
-            corr = (M_work.T @ r_res).reshape(-1).astype(np.float32)
-
-        candidates = np.ones(N, dtype=bool)
-        S = []
-
-        # Orthonormal basis Q
-        Q = np.zeros((d, 0), dtype=np.float32)
-
-        a = float(np.clip(self.alpha, 0.0, 1.0))
-
-        factor = a * (2.0 - a)
-
-        while len(S) < k_target:
-            valid = candidates & (residual_norms_sq > self.epsilon)
-            if not np.any(valid):
-                break
-
-            if corr is not None:
-                signal = (corr * corr) / (residual_norms_sq + self.epsilon)
+    if candidates_axis == "rows":
+        candidates = X_arr
+    elif candidates_axis == "columns":
+        candidates = X_arr.T
+    elif candidates_axis == "auto":
+        if guidance_vec is not None:
+            if X_arr.shape[1] == guidance_vec.size and X_arr.shape[0] != guidance_vec.size:
+                candidates = X_arr
+            elif X_arr.shape[0] == guidance_vec.size and X_arr.shape[1] != guidance_vec.size:
+                candidates = X_arr.T
+            elif X_arr.shape[1] == guidance_vec.size:
+                candidates = X_arr
             else:
-                signal = residual_norms_sq
+                raise ValueError(
+                    "Could not align guidance with candidates. "
+                    f"Candidate shape {X_arr.shape}, guidance length {guidance_vec.size}."
+                )
+        else:
+            candidates = X_arr if X_arr.shape[0] >= X_arr.shape[1] else X_arr.T
+    else:
+        raise ValueError(
+            f"Unsupported candidates_axis={candidates_axis!r}. Expected 'rows', 'columns', or 'auto'."
+        )
 
-            scores = np.full(N, -np.inf, dtype=np.float32)
-            scores[valid] = signal[valid]
+    if guidance_vec is not None and candidates.shape[1] != guidance_vec.size:
+        raise ValueError(
+            "Guidance dimension mismatch after canonicalization. "
+            f"Candidate dimension {candidates.shape[1]}, guidance length {guidance_vec.size}."
+        )
+    return candidates, guidance_vec
 
-            # SoftNorm gate (deterministic)
-            w_norm = self._soft_norm_weight(norms_sq0, valid)
-            scores[valid] *= w_norm[valid]
 
-            best = int(np.argmax(scores))
-            if not np.isfinite(scores[best]):
-                break
+def _softnorm_weights(
+    base_norm_sq: np.ndarray,
+    valid_mask: np.ndarray,
+    p: float,
+    rho_min: float,
+    softnorm_c: float,
+) -> np.ndarray:
+    weights = np.ones_like(base_norm_sq, dtype=np.float64)
+    if p <= 0:
+        return weights
 
-            S.append(best)
-            candidates[best] = False
+    delta = 1e-12
+    valid_idx = np.flatnonzero(valid_mask)
+    if valid_idx.size == 0:
+        return weights
 
-            # Build new orthonormal direction u from best column after removing Q-span
-            x = M_work[:, best].astype(np.float32, copy=False)
-            if Q.shape[1] > 0:
-                c = (Q.T @ x).astype(np.float32, copy=False)         # (t,)
-                v = x - (Q @ c).astype(np.float32, copy=False)       # (d,)
-            else:
-                v = x
+    norms = np.sqrt(np.maximum(base_norm_sq, 0.0))
+    valid_norms = norms[valid_idx]
+    base = float(np.median(valid_norms)) + delta
+    z_valid = valid_norms / base
+    center = float(np.median(z_valid))
+    mad = float(np.median(np.abs(z_valid - center))) + delta
+    threshold = center + softnorm_c * mad
 
-            nv2 = float(np.dot(v, v))
-            if nv2 <= self.epsilon:
-                break
+    logits = np.clip(p * (z_valid - threshold), -60.0, 60.0)
+    valid_weights = 1.0 / (1.0 + np.exp(logits))
+    weights[valid_idx] = np.clip(valid_weights, rho_min, 1.0)
+    return weights
 
-            u = (v / (np.sqrt(nv2) + self.epsilon)).astype(np.float32)
 
-            # Append to basis
-            Q = np.concatenate([Q, u.reshape(-1, 1)], axis=1)
+def _project_residual(x: np.ndarray, basis: list[np.ndarray]) -> np.ndarray:
+    if not basis:
+        return x.copy()
+    coeffs = np.asarray([np.dot(u, x) for u in basis], dtype=np.float64)
+    return x - coeffs @ np.vstack(basis)
 
-            # Projections of u onto all candidates
-            proj = (u.reshape(1, -1) @ M_work).reshape(-1).astype(np.float32)
 
-            # Update residual norms (implicit)
-            if factor > 0.0:
-                residual_norms_sq = residual_norms_sq - (factor * (proj * proj)).astype(np.float32)
-                residual_norms_sq = np.maximum(residual_norms_sq, 0.0).astype(np.float32)
+def _allocate_balanced_quotas(groups: np.ndarray, budget: int) -> dict[object, int]:
+    unique_groups, counts = np.unique(groups, return_counts=True)
+    capacities = {group: int(count) for group, count in zip(unique_groups.tolist(), counts.tolist())}
+    quotas = {group: 0 for group in unique_groups.tolist()}
 
-            # Update guided residual and corr (implicit)
-            if r_res is not None and corr is not None and a > 0.0:
-                s = float((u.reshape(1, -1) @ r_res).reshape(()))
-                r_res = r_res - (a * u.reshape(-1, 1) * s).astype(np.float32)
-                corr = corr - (a * s * proj).astype(np.float32)
+    remaining = min(int(budget), int(np.sum(counts)))
+    active = [group for group in unique_groups.tolist() if capacities[group] > 0]
 
-        self.selected_indices_ = np.asarray(S, dtype=int)
-        return self
+    while remaining > 0 and active:
+        share = remaining // len(active)
+        extra = remaining % len(active)
+        granted_total = 0
 
-    # -------------------------------------------------------------------------
-    # Group-balanced selection (same algorithm per group)
-    # -------------------------------------------------------------------------
-    def _fit_grouped(self, M: np.ndarray, r: Optional[np.ndarray], groups: np.ndarray):
-        d, N = M.shape
-        groups = np.asarray(groups)
-        uniq, counts = np.unique(groups, return_counts=True)
-        n_groups = int(len(uniq))
+        for offset, group in enumerate(active):
+            target = share + (1 if offset < extra else 0)
+            available = capacities[group] - quotas[group]
+            granted = min(available, target)
+            quotas[group] += granted
+            granted_total += granted
 
-        if self.k <= 0 or N == 0 or n_groups == 0:
-            self.selected_indices_ = np.array([], dtype=int)
-            self.n_candidates_ = int(N)
-            return self
+        if granted_total == 0:
+            break
+        remaining -= granted_total
+        active = [group for group in active if quotas[group] < capacities[group]]
 
-        # Balanced quota then redistribute leftovers by remaining capacity
-        base = self.k // n_groups
-        rem = self.k % n_groups
+    return quotas
 
-        quotas = np.array([base] * n_groups, dtype=int)
-        quotas[:rem] += 1
-        quotas = np.minimum(quotas, counts)
 
-        used = int(np.sum(quotas))
-        leftover = int(self.k - used)
-        if leftover > 0:
-            capacity = counts - quotas
-            order = np.argsort(-capacity, kind="stable")
-            for j in order:
-                if leftover <= 0:
-                    break
-                give = min(int(capacity[j]), leftover)
-                quotas[j] += give
-                leftover -= give
+def _resolve_group_quotas(groups: np.ndarray, budget: int, config: dict) -> dict[object, int]:
+    explicit = config.get("group_quotas")
+    if explicit is None:
+        return _allocate_balanced_quotas(groups, budget)
 
-        picks = []
-        for g, q in zip(uniq, quotas):
-            if q <= 0:
-                continue
-            mask = (groups == g)
-            idx_global = np.where(mask)[0]
-            Mg = M[:, mask]
+    unique_groups, counts = np.unique(groups, return_counts=True)
+    capacities = {group: int(count) for group, count in zip(unique_groups.tolist(), counts.tolist())}
+    quotas = {group: 0 for group in unique_groups.tolist()}
 
-            sub = SORG(
-                k=int(q),
-                alpha=self.alpha,
-                p_norm=self.p_norm,
-                epsilon=self.epsilon,
-                min_multiplier=self.min_multiplier,
+    if isinstance(explicit, dict):
+        for group, quota in explicit.items():
+            if group in quotas:
+                quotas[group] = max(0, min(int(quota), capacities[group]))
+    else:
+        explicit_array = np.asarray(explicit)
+        if explicit_array.size != unique_groups.size:
+            raise ValueError(
+                f"group_quotas length mismatch: expected {unique_groups.size}, got {explicit_array.size}."
             )
-            sub._fit_single(Mg, r=r)
-            picks.append(idx_global[sub.selected_indices_])
+        for group, quota in zip(unique_groups.tolist(), explicit_array.tolist()):
+            quotas[group] = max(0, min(int(quota), capacities[group]))
 
-        self.selected_indices_ = np.concatenate(picks) if picks else np.array([], dtype=int)
-        self.n_candidates_ = int(N)
-        return self
+    assigned = int(sum(quotas.values()))
+    if assigned > int(budget):
+        raise ValueError(
+            f"Explicit group_quotas sum to {assigned}, which exceeds budget {budget}."
+        )
+    remaining = min(int(budget), int(np.sum(counts))) - assigned
+    if remaining <= 0:
+        return quotas
 
-    # -------------------------------------------------------------------------
-    # sklearn API
-    # -------------------------------------------------------------------------
-    def fit(
-        self,
-        M: np.ndarray,
-        r: Optional[np.ndarray] = None,
-        groups: Optional[np.ndarray] = None,
-    ):
-        M, r, groups = self._canonicalize(M, r, groups)
-
-        if groups is not None:
-            return self._fit_grouped(M, r, groups)
-
-        return self._fit_single(M, r)
-
-    def transform(self, X: np.ndarray) -> np.ndarray:
-        if self.selected_indices_ is None:
-            raise RuntimeError("SORG is not fitted yet. Call fit() first.")
-
-        idx = np.asarray(self.selected_indices_, dtype=int)
-        X = np.asarray(X)
-        if X.ndim != 2:
-            raise ValueError("X must be a 2D array.")
-
-        if idx.size == 0:
-            if self.n_candidates_ is not None and X.shape[1] == self.n_candidates_:
-                return X[:, :0]
-            if self.n_candidates_ is not None and X.shape[0] == self.n_candidates_:
-                return X[:0, :]
-            return X[:, :0]
-
-        if self.n_candidates_ is not None:
-            if X.shape[1] == self.n_candidates_:
-                return X[:, idx]
-            if X.shape[0] == self.n_candidates_:
-                return X[idx, :]
-
-        # fallback
-        if X.shape[1] > int(np.max(idx)):
-            return X[:, idx]
-        raise ValueError("Shape mismatch: cannot apply selected indices to X.")
-
-    def get_support(self) -> np.ndarray:
-        if self.selected_indices_ is None:
-            raise RuntimeError("SORG is not fitted yet. Call fit() first.")
-        return np.asarray(self.selected_indices_, dtype=int)
+    active = [group for group in unique_groups.tolist() if quotas[group] < capacities[group]]
+    while remaining > 0 and active:
+        granted_any = False
+        for group in active:
+            if remaining <= 0:
+                break
+            if quotas[group] < capacities[group]:
+                quotas[group] += 1
+                remaining -= 1
+                granted_any = True
+        if not granted_any:
+            break
+        active = [group for group in active if quotas[group] < capacities[group]]
+    return quotas
 
 
-__all__ = ["SORG"]
+def _greedy_select(
+    X: np.ndarray,
+    budget: int,
+    *,
+    guidance: np.ndarray | None,
+    alpha: float,
+    p: float,
+    eps: float,
+    rho_min: float,
+    softnorm_c: float,
+) -> np.ndarray:
+    n, _ = X.shape
+    if budget <= 0 or n == 0:
+        return np.empty(0, dtype=np.int64)
+    if budget > n:
+        raise ValueError(f"Budget {budget} exceeds pool size {n}.")
+
+    a = float(np.clip(alpha, 0.0, 1.0))
+    rho = a * (2.0 - a)
+    selected_mask = np.zeros(n, dtype=bool)
+    selected: list[int] = []
+    basis: list[np.ndarray] = []
+
+    base_norm_sq = np.sum(X * X, axis=1)
+    gamma = base_norm_sq.astype(np.float64, copy=True)
+
+    guidance_res = None if guidance is None else guidance.astype(np.float64, copy=True)
+    corr = None if guidance_res is None else X @ guidance_res
+    base_signal = base_norm_sq.astype(np.float64, copy=True)
+    if guidance_res is not None:
+        base_corr = X @ guidance_res
+        base_signal = (base_corr * base_corr) / (base_norm_sq + eps)
+
+    for _ in range(min(budget, n)):
+        valid_mask = (~selected_mask) & (gamma > eps)
+        if not np.any(valid_mask):
+            remaining_idx = np.flatnonzero(~selected_mask)
+            need = min(int(budget) - len(selected), int(remaining_idx.size))
+            if need > 0:
+                remaining_mask = np.zeros(n, dtype=bool)
+                remaining_mask[remaining_idx] = True
+                weights = _softnorm_weights(
+                    base_norm_sq=base_norm_sq,
+                    valid_mask=remaining_mask,
+                    p=p,
+                    rho_min=rho_min,
+                    softnorm_c=softnorm_c,
+                )
+                completion_scores = base_signal[remaining_idx] * weights[remaining_idx]
+                order = np.lexsort((remaining_idx, -completion_scores))
+                fill = remaining_idx[order[:need]]
+                selected.extend(fill.astype(int).tolist())
+                selected_mask[fill] = True
+            break
+
+        weights = _softnorm_weights(
+            base_norm_sq=base_norm_sq,
+            valid_mask=valid_mask,
+            p=p,
+            rho_min=rho_min,
+            softnorm_c=softnorm_c,
+        )
+        if corr is None:
+            signal = gamma
+        else:
+            signal = (corr * corr) / (gamma + eps)
+
+        valid_idx = np.flatnonzero(valid_mask)
+        weighted_signal = signal[valid_idx] * weights[valid_idx]
+        best_idx = int(valid_idx[int(np.argmax(weighted_signal))])
+
+        residual = _project_residual(X[best_idx], basis)
+        residual_norm_sq = float(np.dot(residual, residual))
+        if residual_norm_sq <= eps:
+            gamma[best_idx] = 0.0
+            continue
+
+        u = residual / np.sqrt(residual_norm_sq)
+        selected.append(best_idx)
+        selected_mask[best_idx] = True
+        basis.append(u)
+
+        d = X @ u
+        gamma = np.maximum(0.0, gamma - rho * (d * d))
+        if corr is not None and guidance_res is not None:
+            s = float(np.dot(u, guidance_res))
+            guidance_res = guidance_res - a * u * s
+            corr = corr - a * s * d
+
+    return np.asarray(selected, dtype=np.int64)
+
+
+def select(
+    X: np.ndarray,
+    budget: int,
+    guidance: np.ndarray | None = None,
+    groups: np.ndarray | None = None,
+    config: dict | None = None,
+    seed: int = 0,
+) -> np.ndarray:
+    cfg = config or {}
+    del seed
+    variant = cfg.get("variant", "core")
+    if variant not in SUPPORTED_VARIANTS:
+        raise ValueError(
+            f"Unsupported SORG variant: {variant}. Expected one of {SUPPORTED_VARIANTS}."
+        )
+
+    X_rows, guidance_vec = _canonicalize_candidates(
+        X=np.asarray(X),
+        guidance=guidance,
+        candidates_axis=cfg.get("candidates_axis", DEFAULT_GROUP_AXIS),
+    )
+    n = X_rows.shape[0]
+    if budget > n:
+        raise ValueError(f"Budget {budget} exceeds pool size {n}.")
+
+    groups_arr = None if groups is None else np.asarray(groups)
+    if groups_arr is not None and groups_arr.shape[0] != n:
+        raise ValueError(
+            f"Group array length mismatch: expected {n}, got {groups_arr.shape[0]}."
+        )
+
+    use_gate = bool(cfg.get("use_gate", variant in {"gate", "full"}))
+    use_guidance = bool(cfg.get("use_guidance", variant in {"guided", "full"}))
+    use_grouping = bool(cfg.get("use_grouping", variant in {"grouped", "full"}))
+
+    if use_guidance and guidance_vec is None:
+        raise ValueError(f"SORG variant {variant!r} requires a guidance vector.")
+    if use_grouping and groups_arr is None:
+        raise ValueError(f"SORG variant {variant!r} requires group labels.")
+
+    alpha = float(cfg.get("alpha", DEFAULT_ALPHA))
+    p = float(cfg.get("p", DEFAULT_P if use_gate else 0.0))
+    eps = float(cfg.get("eps", DEFAULT_EPS))
+    rho_min = float(cfg.get("rho_min", DEFAULT_RHO_MIN))
+    softnorm_c = float(cfg.get("softnorm_c", DEFAULT_SOFTNORM_C))
+
+    effective_guidance = guidance_vec if use_guidance else None
+    effective_p = p if use_gate else 0.0
+
+    if not use_grouping:
+        return _greedy_select(
+            X_rows,
+            budget,
+            guidance=effective_guidance,
+            alpha=alpha,
+            p=effective_p,
+            eps=eps,
+            rho_min=rho_min,
+            softnorm_c=softnorm_c,
+        )
+
+    quotas = _resolve_group_quotas(groups_arr, budget, cfg)
+    selected_groups: list[np.ndarray] = []
+
+    for group in quotas:
+        quota = quotas[group]
+        if quota <= 0:
+            continue
+        group_idx = np.flatnonzero(groups_arr == group)
+        group_selected_local = _greedy_select(
+            X_rows[group_idx],
+            quota,
+            guidance=effective_guidance,
+            alpha=alpha,
+            p=effective_p,
+            eps=eps,
+            rho_min=rho_min,
+            softnorm_c=softnorm_c,
+        )
+        selected_groups.append(group_idx[group_selected_local])
+
+    if not selected_groups:
+        return np.empty(0, dtype=np.int64)
+    return np.concatenate(selected_groups, axis=0)
+
